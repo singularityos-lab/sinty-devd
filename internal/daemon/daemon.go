@@ -310,20 +310,27 @@ func (d *Daemon) broadcast(dev *device.Device, initialized int64) {
 }
 
 func (d *Daemon) applyNode(dev *device.Device, out *rules.Outcome) {
-	uid, gid := 0, 0
+	uid, gid := -1, -1
+	if v, err := strconv.Atoi(dev.Props["DEVUID"]); err == nil {
+		uid = v
+	}
+	if v, err := strconv.Atoi(dev.Props["DEVGID"]); err == nil {
+		gid = v
+	}
 	if out.Owner != "" {
 		uid = d.lookupUser(out.Owner)
 	}
 	if out.Group != "" {
 		gid = d.lookupGroup(out.Group)
 	}
-	mode := out.Mode
-	if !out.ModeSet {
-		if gid > 0 {
-			mode = 0o660
-		} else {
-			mode = 0o600
-		}
+	mode := -1
+	if v, err := strconv.ParseUint(dev.Props["DEVMODE"], 8, 32); err == nil {
+		mode = int(v)
+	}
+	if out.ModeSet {
+		mode = int(out.Mode)
+	} else if out.Group != "" && gid > 0 {
+		mode = 0o660
 	}
 	var st unix.Stat_t
 	if err := unix.Lstat(dev.DevNode, &st); err == nil {
@@ -332,10 +339,10 @@ func (d *Daemon) applyNode(dev *device.Device, out *rules.Outcome) {
 			wantType = unix.S_IFBLK
 		}
 		if st.Mode&unix.S_IFMT == wantType && int(unix.Major(uint64(st.Rdev))) == dev.Major && int(unix.Minor(uint64(st.Rdev))) == dev.Minor {
-			if st.Mode&0o7777 != uint32(mode) {
+			if mode >= 0 && st.Mode&0o7777 != uint32(mode) {
 				unix.Chmod(dev.DevNode, uint32(mode))
 			}
-			if int(st.Uid) != uid || int(st.Gid) != gid {
+			if (uid >= 0 && int(st.Uid) != uid) || (gid >= 0 && int(st.Gid) != gid) {
 				unix.Lchown(dev.DevNode, uid, gid)
 			}
 		}
@@ -399,7 +406,7 @@ func (d *Daemon) lookupGroup(name string) int {
 	if v, ok := d.groups[name]; ok {
 		return v
 	}
-	id := 0
+	id := -1
 	if n, err := strconv.Atoi(name); err == nil {
 		id = n
 	} else if g, err := user.LookupGroup(name); err == nil {
@@ -415,7 +422,7 @@ func (d *Daemon) lookupUser(name string) int {
 	if v, ok := d.users[name]; ok {
 		return v
 	}
-	id := 0
+	id := -1
 	if n, err := strconv.Atoi(name); err == nil {
 		id = n
 	} else if u, err := user.Lookup(name); err == nil {
