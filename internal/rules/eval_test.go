@@ -118,10 +118,28 @@ func TestGlob(t *testing.T) {
 		{"input/*", "input/event5", true},
 		{"exact", "exact", true},
 		{"exact", "exactly", false},
+		{"ID_[!F]*", "ID_PATH", true},
+		{"ID_[!F]*", "ID_FS_TYPE", false},
 	}
 	for _, c := range cases {
 		if Glob(c.pattern, c.value) != c.want {
 			t.Errorf("Glob(%q, %q) != %v", c.pattern, c.value, c.want)
 		}
+	}
+}
+
+func TestForeignAttr(t *testing.T) {
+	sys := fakeSys(t)
+	writeFile(t, filepath.Join(sys, "class/dmi/id/modalias"), "dmi:bvnLENOVO:pnThinkPad\n")
+	rules, err := Parse(strings.NewReader(`KERNEL=="event*", ATTR{[dmi/id]modalias}=="dmi:*ThinkPad*", ENV{KB}="$attr{[dmi/id]modalias}"`+"\n"), "t.rules")
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := &Set{Rules: rules}
+	set.resolve()
+	d, _ := device.FromSyspath(sys, "/devices/platform/i8042/serio1/input/input5/event5")
+	set.Apply(d, fakeHost{})
+	if d.Props["KB"] != "dmi:bvnLENOVO:pnThinkPad" {
+		t.Fatalf("KB = %q", d.Props["KB"])
 	}
 }

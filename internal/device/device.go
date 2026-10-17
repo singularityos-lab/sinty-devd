@@ -300,3 +300,24 @@ func (d *Device) SortedTags() []string {
 	sort.Strings(out)
 	return out
 }
+
+// ForeignAttr reads an attribute of another device named as
+// "[subsystem/sysname]attribute", as in "[dmi/id]modalias".
+func (d *Device) ForeignAttr(spec string) string {
+	end := strings.IndexByte(spec, ']')
+	if !strings.HasPrefix(spec, "[") || end < 0 {
+		return ""
+	}
+	subsystem, name, ok := strings.Cut(spec[1:end], "/")
+	attr := spec[end+1:]
+	if !ok || attr == "" || strings.Contains(spec, "..") {
+		return ""
+	}
+	for _, dir := range []string{filepath.Join(d.Sys, "class", subsystem, name), filepath.Join(d.Sys, "bus", subsystem, "devices", name)} {
+		data, err := readLimited(filepath.Join(dir, attr), 4096)
+		if err == nil {
+			return strings.TrimRight(string(data), " \t\r\n")
+		}
+	}
+	return ""
+}

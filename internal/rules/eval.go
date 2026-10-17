@@ -59,6 +59,7 @@ func (s *Set) Apply(d *device.Device, host Host) *Outcome {
 }
 
 func (st *state) matches(r *Rule) bool {
+	st.escape = escapeUnset
 	parentChecked := false
 	for _, t := range r.Tokens {
 		switch t.Key {
@@ -189,7 +190,13 @@ func (st *state) match(t Token) bool {
 			data, err := os.ReadFile(filepath.Join("/proc/sys", strings.ReplaceAll(t.Attr, ".", "/")))
 			value, ok = strings.TrimSpace(string(data)), err == nil
 		} else {
-			value, ok = d.Attr(st.format(t.Attr))
+			name := st.format(t.Attr)
+			if strings.HasPrefix(name, "[") {
+				value = d.ForeignAttr(name)
+				ok = value != ""
+			} else {
+				value, ok = d.Attr(name)
+			}
 		}
 		if !ok {
 			return t.Op == OpNoMatch
@@ -394,7 +401,7 @@ func (st *state) assign(r *Rule, t Token) {
 		}
 		st.out.Name = st.format(t.Value)
 	case "SYMLINK":
-		if st.final("SYMLINK", t.Op) {
+		if d.DevNode == "" || st.final("SYMLINK", t.Op) {
 			return
 		}
 		if t.Op == OpAssign || t.Op == OpAssignFinal {
@@ -431,7 +438,9 @@ func (st *state) assign(r *Rule, t Token) {
 			st.out.ModeSet = true
 		}
 	case "ENV":
+		st.replaceWS = st.escape == escapeReplace
 		value := st.format(t.Value)
+		st.replaceWS = false
 		switch t.Op {
 		case OpAdd:
 			if old := d.Props[t.Attr]; old != "" {

@@ -1,0 +1,7 @@
+/sinty-devd
+/sinty-devadm
+*.test
+*.out
+
+.DS_Store
+*.swp

@@ -166,7 +166,7 @@ func (db *HWDB) fnmatch(n node, p int, buf, search string, out map[string]string
 }
 
 func globNoSlash(s string) string {
-	return strings.ReplaceAll(s, "/", "\x00")
+	return strings.ReplaceAll(strings.ReplaceAll(s, "[!", "[^"), "/", "\x00")
 }
 
 func modaliasOf(d *device.Device, subsystem string) string {

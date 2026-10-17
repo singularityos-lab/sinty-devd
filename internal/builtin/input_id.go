@@ -2,6 +2,10 @@ package builtin
 
 import (
 	"math/bits"
+	"os"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
 	"strconv"
 	"strings"
 
@@ -109,7 +113,8 @@ func inputID(args []string, d *device.Device) (map[string]string, error) {
 	abs := capability(input, "abs")
 	rel := capability(input, "rel")
 	key := capability(input, "key")
-	inputProps := capability(input, "properties")
+	propText, _ := input.Attr("properties")
+	inputProps := parseBitmap(propText)
 
 	isPointer := testPointers(d, ev, abs, key, rel, inputProps, props)
 	isKey := testKey(ev, key, props)
@@ -118,6 +123,9 @@ func inputID(args []string, d *device.Device) (map[string]string, error) {
 	}
 	if ev.has(evSw) {
 		props["ID_INPUT_SWITCH"] = "1"
+	}
+	if d.DevNode != "" && strings.HasPrefix(d.SysName, "event") && (props["ID_INPUT_TOUCHPAD"] == "1" || props["ID_INPUT_TABLET"] == "1" || props["ID_INPUT_TOUCHSCREEN"] == "1") {
+		absSize(d.DevNode, props)
 	}
 	return props, nil
 }
@@ -211,9 +219,8 @@ func testPointers(d *device.Device, ev, abs, key, rel, inputProps bitmap, props 
 	if hasMouseButton && hasRelCoordinates {
 		if isPointingStick {
 			props["ID_INPUT_POINTINGSTICK"] = "1"
-		} else {
-			props["ID_INPUT_MOUSE"] = "1"
 		}
+		props["ID_INPUT_MOUSE"] = "1"
 	}
 	if props["ID_INPUT_JOYSTICK"] == "1" && (props["ID_INPUT_TOUCHPAD"] == "1" || props["ID_INPUT_MOUSE"] == "1") {
 		delete(props, "ID_INPUT_JOYSTICK")
@@ -255,4 +262,21 @@ func testKey(ev, key bitmap, props map[string]string) bool {
 		return true
 	}
 	return found
+}
+
+func absSize(node string, props map[string]string) {
+	f, err := os.OpenFile(node, os.O_RDONLY|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	for axis, key := range map[uintptr]string{absX: "ID_INPUT_WIDTH_MM", absY: "ID_INPUT_HEIGHT_MM"} {
+		var info absInfo
+		if _, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), 0x80184540+axis, uintptr(unsafe.Pointer(&info))); errno != 0 {
+			continue
+		}
+		if info.Resolution > 0 && info.Maximum > info.Minimum {
+			props[key] = strconv.Itoa(int((info.Maximum - info.Minimum) / info.Resolution))
+		}
+	}
 }

@@ -1,0 +1,15 @@
+[Unit]
+Description=Sinty device manager (udev-compatible)
+Documentation=https://github.com/singularityos-lab/sinty-devd
+DefaultDependencies=no
+Before=sysinit.target
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/sinty-devd
+ExecStartPost=/usr/bin/sinty-devadm settle --timeout=120
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=sysinit.target

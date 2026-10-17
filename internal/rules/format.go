@@ -137,6 +137,9 @@ func (st *state) expand(code byte, arg string) string {
 		if arg == "" {
 			return ""
 		}
+		if strings.HasPrefix(arg, "[") {
+			return d.ForeignAttr(arg)
+		}
 		if v, ok := d.Attr(arg); ok {
 			return v
 		}
@@ -157,6 +160,7 @@ func Glob(pattern, value string) bool {
 		return pattern == value
 	}
 	for _, alt := range strings.Split(pattern, "|") {
+		alt = strings.ReplaceAll(alt, "[!", "[^")
 		if ok, err := filepath.Match(alt, value); err == nil && ok {
 			return true
 		}

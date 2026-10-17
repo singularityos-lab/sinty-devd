@@ -147,8 +147,12 @@ func usbInterfaces(dev *device.Device) string {
 }
 
 func pathID(args []string, d *device.Device) (map[string]string, error) {
-	var parts []string
-	prepend := func(s string) { parts = append([]string{s}, parts...) }
+	var parts, revisionParts []string
+	usbRevision := ""
+	prepend := func(s string) {
+		parts = append([]string{s}, parts...)
+		revisionParts = append([]string{s}, revisionParts...)
+	}
 	supported := false
 	ancestors := d.Ancestors()
 	for i := 0; i < len(ancestors); i++ {
@@ -166,7 +170,15 @@ func pathID(args []string, d *device.Device) (map[string]string, error) {
 				if j := strings.IndexByte(port, '-'); j >= 0 {
 					port = port[j+1:]
 				}
-				prepend("usb-0:" + port)
+				parts = append([]string{"usb-0:" + port}, parts...)
+				if dev := p.Parent(); dev != nil {
+					if v, ok := dev.Attr("version"); ok {
+						if major, _, _ := strings.Cut(strings.TrimSpace(v), "."); major != "" {
+							usbRevision = major
+						}
+					}
+				}
+				revisionParts = append([]string{"usbv" + usbRevision + "-0:" + port}, revisionParts...)
 				supported = true
 				for i+1 < len(ancestors) && ancestors[i+1].Subsystem == "usb" {
 					i++
@@ -214,7 +226,12 @@ func pathID(args []string, d *device.Device) (map[string]string, error) {
 		return nil, fmt.Errorf("no path")
 	}
 	path := strings.Join(parts, "-")
-	return map[string]string{"ID_PATH": path, "ID_PATH_TAG": pathTag(path)}, nil
+	props := map[string]string{"ID_PATH": path, "ID_PATH_TAG": pathTag(path)}
+	if usbRevision != "" {
+		withRevision := strings.Join(revisionParts, "-")
+		props["ID_PATH_WITH_USB_REVISION"] = withRevision
+	}
+	return props, nil
 }
 
 func pathTag(path string) string {
