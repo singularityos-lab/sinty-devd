@@ -143,3 +143,31 @@ func TestForeignAttr(t *testing.T) {
 		t.Fatalf("KB = %q", d.Props["KB"])
 	}
 }
+
+func TestParentAttrWrite(t *testing.T) {
+	sys := t.TempDir()
+	card := filepath.Join(sys, "devices/pci0000:00/0000:00:1f.3/sound/card0")
+	writeFile(t, filepath.Join(card, "uevent"), "")
+	writeFile(t, filepath.Join(card, "controlC0/uevent"), "MAJOR=116\nMINOR=10\nDEVNAME=snd/controlC0\n")
+	writeFile(t, filepath.Join(sys, "outside"), "")
+	os.MkdirAll(filepath.Join(sys, "class/sound"), 0o755)
+	os.Symlink(filepath.Join(sys, "class/sound"), filepath.Join(card, "subsystem"))
+	os.Symlink(filepath.Join(sys, "class/sound"), filepath.Join(card, "controlC0/subsystem"))
+	rules, err := Parse(strings.NewReader(`KERNEL=="controlC*", ATTR{../uevent}="change", ATTR{../../../../../../../outside}="x"`+"\n"), "t.rules")
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := &Set{Rules: rules}
+	set.resolve()
+	d, err := device.FromSyspath(sys, "/devices/pci0000:00/0000:00:1f.3/sound/card0/controlC0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	set.Apply(d, fakeHost{})
+	if b, _ := os.ReadFile(filepath.Join(card, "uevent")); string(b) != "change" {
+		t.Fatalf("card uevent = %q, want change", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(sys, "outside")); string(b) != "" {
+		t.Fatalf("write escaped the device tree: %q", b)
+	}
+}

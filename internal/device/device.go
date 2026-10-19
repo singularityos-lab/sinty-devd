@@ -230,11 +230,12 @@ func readLimited(path string, limit int) ([]byte, error) {
 
 // WriteAttr writes a sysfs attribute of the device.
 func (d *Device) WriteAttr(name, value string) error {
-	if strings.Contains(name, "..") {
+	path := filepath.Join(d.SysPath(), name)
+	if !strings.HasPrefix(path, filepath.Clean(d.Sys)+string(filepath.Separator)) {
 		return fmt.Errorf("invalid attribute %q", name)
 	}
 	delete(d.attrs, name)
-	return os.WriteFile(filepath.Join(d.SysPath(), name), []byte(value), 0)
+	return os.WriteFile(path, []byte(value), 0)
 }
 
 // Parent returns the closest ancestor that has a uevent file, or nil.
