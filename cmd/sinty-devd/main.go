@@ -23,6 +23,8 @@ import (
 // ControlSocket is where sinty-devadm talks to the daemon.
 const ControlSocket = "/run/sinty-devd/control"
 
+const udevControl = "/run/udev/control"
+
 func main() {
 	coldplug := flag.Bool("coldplug", true, "replay add events for the devices present at start")
 	flag.Parse()
@@ -46,6 +48,7 @@ func main() {
 		}
 	}()
 	go serveControl(ctx, d, cfg.Sys)
+	go announce(ctx)
 	go func() {
 		for {
 			env, err := kernel.Receive()
@@ -94,6 +97,29 @@ func serveControl(ctx context.Context, d *daemon.Daemon, sys string) {
 			return
 		}
 		go handle(conn, d, sys)
+	}
+}
+
+func announce(ctx context.Context) {
+	os.MkdirAll(filepath.Dir(udevControl), 0o755)
+	os.Remove(udevControl)
+	l, err := net.Listen("unixpacket", udevControl)
+	if err != nil {
+		log.Printf("udev control socket: %v", err)
+		return
+	}
+	os.Chmod(udevControl, 0o600)
+	go func() {
+		<-ctx.Done()
+		l.Close()
+		os.Remove(udevControl)
+	}()
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			return
+		}
+		conn.Close()
 	}
 }
 
