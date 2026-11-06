@@ -69,6 +69,8 @@ func run(timeout time.Duration, name string, args ...string) (string, error) {
 	return out.String(), err
 }
 
+const moduleLoadTimeout = 180 * time.Second
+
 func kmod(args []string, d *device.Device) (map[string]string, error) {
 	if len(args) == 0 || args[0] != "load" {
 		return nil, nil
@@ -81,11 +83,13 @@ func kmod(args []string, d *device.Device) (map[string]string, error) {
 		if alias == "" {
 			continue
 		}
-		if _, err := run(30*time.Second, "/sbin/modprobe", "-b", "-q", "--", alias); err != nil {
-			if _, err := exec.LookPath("modprobe"); err == nil {
-				run(30*time.Second, "modprobe", "-b", "-q", "--", alias)
+		bin := "/sbin/modprobe"
+		if _, err := os.Stat(bin); err != nil {
+			if bin, err = exec.LookPath("modprobe"); err != nil {
+				continue
 			}
 		}
+		run(moduleLoadTimeout, bin, "-b", "-q", "--", alias)
 	}
 	return nil, nil
 }
